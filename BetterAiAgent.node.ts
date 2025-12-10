@@ -28,19 +28,66 @@ import {
 import { ChatArrayMemory } from './utils/chatArrayMemory';
 import type { CoreMessage } from 'ai';
 
+// Helper function to convert messages to readable text format
+function convertMessagesToText(messages: CoreMessage[], systemMessage?: string): string {
+	const lines: string[] = [];
+
+	// Add system message first if provided
+	if (systemMessage) {
+		lines.push(`System: ${systemMessage}`);
+	}
+
+	for (const msg of messages) {
+		if (msg.role === 'system') {
+			lines.push(`System: ${msg.content}`);
+		} else if (msg.role === 'user') {
+			lines.push(`User: ${msg.content}`);
+		} else if (msg.role === 'assistant') {
+			if (typeof msg.content === 'string') {
+				lines.push(`Assistant: ${msg.content}`);
+			} else if (Array.isArray(msg.content)) {
+				// Tool calls
+				const toolCalls = msg.content
+					.filter((part: any) => part.type === 'tool-call')
+					.map((part: any) => {
+						const argsStr = JSON.stringify(part.args || {});
+						return `${part.toolName}(${argsStr})`;
+					})
+					.join(', ');
+				if (toolCalls) {
+					lines.push(`Assistant: [Tool Calls: ${toolCalls}]`);
+				}
+			}
+		} else if (msg.role === 'tool') {
+			if (Array.isArray(msg.content)) {
+				for (const part of msg.content) {
+					if (part.type === 'tool-result') {
+						const resultStr = typeof part.result === 'string'
+							? part.result
+							: JSON.stringify(part.result);
+						lines.push(`Tool Result [${part.toolName}]: ${resultStr}`);
+					}
+				}
+			}
+		}
+	}
+
+	return lines.join('\n');
+}
+
 // Message validation helper
 function validateCoreMessage(msg: any): msg is CoreMessage {
 	if (!msg || typeof msg !== 'object') return false;
 	if (!msg.role || typeof msg.role !== 'string') return false;
 	if (!['user', 'assistant', 'tool', 'system'].includes(msg.role)) return false;
-	
+
 	// Content validation based on role
 	if (msg.role === 'user' || msg.role === 'system') {
 		return typeof msg.content === 'string';
 	} else if (msg.role === 'assistant') {
 		return typeof msg.content === 'string' || Array.isArray(msg.content);
 	} else if (msg.role === 'tool') {
-		return Array.isArray(msg.content) && msg.content.every((part: any) => 
+		return Array.isArray(msg.content) && msg.content.every((part: any) =>
 			part && typeof part === 'object' && part.type === 'tool-result'
 		);
 	}
@@ -730,6 +777,10 @@ export class BetterAiAgent implements INodeType {
 				const validatedMessages = validateMessagesArray(messages);
 				genArgs.messages = validatedMessages;
 
+				// Record the complete prompt messages (for output)
+				const completePromptMessages = [...validatedMessages];
+				const promptText = convertMessagesToText(validatedMessages, options.systemMessage);
+
 				// Generate response - let n8n handle any errors and retries
 				let result: any;
 				try {
@@ -836,6 +887,9 @@ export class BetterAiAgent implements INodeType {
 						steps: result.steps || [],
 						// Include debug information
 						totalSteps: result.steps?.length || 0,
+						// Include prompt information
+						promptMessages: completePromptMessages,
+						promptText: promptText,
 					},
 				});
 
