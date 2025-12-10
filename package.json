@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-better-ai-agent-return-input",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "A better AI Agent node for n8n with improved memory management and modern AI SDK integration. This will return the full input data along with the agent's response.",
   "main": "dist/BetterAiAgent.node.js",
   "scripts": {
